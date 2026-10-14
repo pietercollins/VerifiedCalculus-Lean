@@ -285,8 +285,8 @@ by
 
 end
 
-
-abbrev Point (B : Type) [Bs : Basis B] := Quotient (Setoid.mk _ (@equivalent_instEquivalence B Bs))
+abbrev nestedSetoid (B : Type) [Bs : Basis B] := Setoid.mk _ (@equivalent_instEquivalence B Bs)
+abbrev Point (B : Type) [Bs : Basis B] := Quotient (@nestedSetoid B Bs)
 
 section
 
@@ -308,5 +308,20 @@ def apply_monotone₂
   Quotient.lift₂ f H p1 p2
 
 end
+
+
+
+def equivalent_sequences {α : Type} [s : Setoid α] (s1 s2 : Nat → α) :=
+  forall n, s.r (s1 n) (s2 n)
+
+def sequence_setoid {α : Type} [s : Setoid α] : Setoid (Nat → α) := by
+  apply Setoid.mk equivalent_sequences
+  constructor
+  · intro s n; exact Setoid.refl (s n)
+  · intro s1 s2 H n; exact Setoid.symm (H n)
+  · intro s1 s2 s3 H12 H23 n; exact Setoid.trans (H12 n) (H23 n)
+
+axiom to_setoid_sequence {α} [setoid : Setoid α] : (Nat → Quotient setoid) → Quotient (@sequence_setoid α setoid)
+
 
 end TopologicalBasis

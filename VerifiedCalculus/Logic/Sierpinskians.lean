@@ -83,11 +83,11 @@ theorem eventually_equal_instEquivalence : Equivalence eventually_equal :=
     (fun H12 H23 ↦ TopologicalBasis.eventually_equal_trans H12 H23)
 
 
-def setoid : Setoid Repr :=
+def instSetoidRepr : Setoid Repr :=
   Setoid.mk _ TopologicalBasis.equivalent_instEquivalence
 
 def Sierpinskian := TopologicalBasis.Point Basic
-def quot : Repr → Sierpinskian := Quotient.mk setoid
+def quot : Repr → Sierpinskian := Quotient.mk instSetoidRepr
 
 def true := quot Repr.true
 def indeterminate := quot Repr.indeterminate
@@ -382,6 +382,183 @@ theorem or_true : forall (s1 s2 : Sierpinskian), or s1 s2 = true ↔ s1 = true �
     cases H12 with
     | inl H1 => left; exact Quotient.exact H1;
     | inr H2 => right; exact Quotient.exact H2;
+
+
+
+def Basic.disj (ss : Nat → Basic) : Nat → Basic :=
+  fun n ↦ match n with
+  | .zero => ss .zero
+  | .succ m => or (disj ss m) (ss (.succ m))
+
+private theorem Basic.disj_succ : forall ss n,
+  disj ss (Nat.succ n) = or (disj ss n) (ss (Nat.succ n)) :=
+by
+  intro ss n; rfl
+
+def Repr.disj (ss : Nat → Repr) : Repr :=
+  let ssq := fun n m ↦ (ss n).val m
+  let ssn := fun n ↦ (ss n).property
+  let seq := fun n ↦ Basic.disj (fun m ↦ (ss m).val n) n
+  have nested : is_nested seq := by
+    apply (TopologicalBasis.weak_nested_iff_strong_nested seq).mp
+    unfold seq
+    intro n
+    rw [Basic.disj_succ]; dsimp;
+    have or_left_refines : forall (s1 s1' s2' : Basic),
+        refines s1' s1 → refines (Basic.or s1' s2') (s1) := by
+      intros s1 s1' s2'; unfold refines Basic.or
+      cases s1 <;> cases s1' <;> cases s2'; all_goals simp_all
+    apply or_left_refines
+    have Hk : forall k, refines (Basic.disj (fun m ↦ (ss m).val (n.succ)) k) (Basic.disj (fun m ↦ (ss m).val n) k) := by
+      intro k
+      induction k with
+      | zero =>
+          unfold Basic.disj; dsimp
+          apply ssn; exact Nat.le_succ n
+      | succ k IHk =>
+          rw [Basic.disj_succ]
+          rw [Basic.disj_succ]
+          apply Basic.or_mono
+          · exact IHk
+          · apply (ss k.succ).property
+            exact Nat.le_succ n
+    exact Hk n
+  mk seq nested
+
+
+theorem Basic.disj_mono : forall ss ss' : Nat → Basic,
+    (forall n, refines (ss' n) (ss n)) → forall n, refines (disj ss' n) (disj ss n) := by
+  intros ss ss' H n
+  induction n with
+  | zero => unfold disj; simp; exact (H 0)
+  | succ n IHn =>
+      rw [Basic.disj_succ, Basic.disj_succ]
+      apply Basic.or_mono
+      · exact IHn
+      · exact H (n.succ)
+
+theorem Basic.disj_true : forall ss : Nat → Basic, forall n,
+  disj ss n = true ↔ ∃ m, m ≤ n ∧ ss m = true :=
+by
+  intro ss n
+  induction n with
+  | zero =>
+      apply Iff.intro
+      · intro H; exists 0
+      · rintro ⟨m, ⟨Hmle0,H⟩⟩
+        unfold disj; dsimp
+        rw [←Nat.eq_zero_of_le_zero Hmle0]
+        exact H
+  | succ n IHn =>
+      rw [disj_succ]
+      apply Iff.intro
+      · intro H
+        have HO := (or_true _ _).mp H
+        cases HO with
+        | inl Hc1 =>
+            have H1 := IHn.mp Hc1
+            obtain ⟨m,⟨Hmn,Hm⟩⟩ := H1
+            exists m
+            apply And.intro
+            · exact Nat.le_add_right_of_le Hmn
+            · exact Hm
+        | inr Hc1 =>
+            exists n+1
+            apply And.intro
+            · exact Nat.le_refl (n + 1)
+            · exact Hc1
+      · rintro ⟨m,⟨Hmlesn,Hm⟩⟩
+        apply (or_true _ _).mpr
+        have Dmlen : Decidable (m≤n) := m.decLe n
+        cases Dmlen with
+        | isFalse Hmgtn =>
+            right
+            have Hnltm : n < m := Nat.lt_of_not_le Hmgtn
+            have Hmeqn : m = n.succ := by exact Eq.symm (Nat.le_antisymm Hnltm Hmlesn)
+            rw [←Hmeqn]
+            exact Hm
+        | isTrue Hmlen =>
+            left
+            apply IHn.mpr
+            exists m
+
+theorem Repr.disj_max : forall (ss : Nat → Repr) (n : Nat),
+    (Repr.disj ss).val n = Basic.disj (fun m ↦ (ss m).val n) n := by
+  intro ss n
+  induction n with
+  | zero => rfl
+  | succ n IHn => unfold Repr.disj mk; rfl
+
+private theorem Repr.disj_repectful_true :
+  forall (s1 s2 : Nat → Repr) (_ : ∀ n, s1 n ≈ s2 n),
+    (∃ n1, TopologicalBasis.Basis.refines ((disj s1).val n1) Basic.true) →
+      (∃ n2, TopologicalBasis.Basis.refines ((disj s2).val n2) Basic.true) :=
+by
+  intro s1 s2 Hn H1
+  obtain ⟨m1, H1⟩ := H1
+  have H1t : (disj s1).val m1 = .true := Basic.refines_true ((disj s1).val m1) H1; clear H1
+  rw [Repr.disj_max] at H1t
+  have H1m : ∃ m, m ≤ m1 ∧ (s1 m).val m1 = Basic.true := by
+    exact (Basic.disj_true (fun m ↦ (s1 m).val m1) m1).mp H1t
+  obtain ⟨n1, ⟨H1mn,H1⟩⟩ := H1m
+  have H2m : ∃ m2, (s2 n1).val m2 = .true := by
+    have H1t : (s1 n1) ≈ Repr.true := by
+      apply TopologicalBasis.eventually_equal_implies_equivalent
+      unfold TopologicalBasis.eventually_equal
+      exists m1; intro k1 Hk1;
+      apply Basic.refines_true; rw [←H1]
+      apply ((s1 n1).property _ _ Hk1)
+    have H2t : s2 n1 ≈ true := by
+      apply TopologicalBasis.equivalent_trans _ H1t
+      apply TopologicalBasis.equivalent_symm
+      exact (Hn n1)
+    have H2et := equivalent_true_implies_eventually_true H2t
+    obtain ⟨m2, Hm2⟩ := H2et
+    exists m2
+    apply Hm2
+    exact Nat.le_refl m2
+  obtain ⟨m2, H2m⟩ := H2m
+  let n2 := max n1 m2
+  exists n2
+  suffices (disj s2).val n2 = .true by
+    rw [this]; exact TopologicalBasis.Basis.refines_refl Basic.true
+  have H2n : (s2 n1).val n2 = .true := by
+    have H2nt := (s2 n1).property m2 n2 (Nat.le_max_right n1 m2)
+    rw [H2m] at H2nt
+    exact Basic.refines_true _ H2nt
+  rw [disj_max]
+  apply (Basic.disj_true _ _).mpr
+  exists n1
+  apply And.intro
+  · exact Nat.le_max_left n1 m2
+  · exact H2n
+
+
+theorem Repr.disj_respectful :
+    forall (s1 s2 : Nat → Repr), (forall n, s1 n ≈ s2 n) → Repr.disj s1 ≈ Repr.disj s2 := by
+  intro s1 s2 Hn
+  intro b
+  cases b with
+  | true =>
+      apply Iff.intro
+      · exact disj_repectful_true s1 s2 Hn
+      · exact disj_repectful_true s2 s1 (fun n ↦ TopologicalBasis.equivalent_symm (Hn n))
+  | indeterminate =>
+      apply Iff.intro
+      · intro H; exists 0
+      · intro H; exists 0
+
+noncomputable def disj (ss : Nat → Sierpinskian) : Sierpinskian := by
+  let qss := @TopologicalBasis.to_setoid_sequence _ instSetoidRepr ss
+  let f (ss) := quot (Repr.disj ss)
+  have H : forall (s1 s2 : Nat → Repr),
+      (@TopologicalBasis.equivalent_sequences _ instSetoidRepr s1 s2) → quot (Repr.disj s1) = quot (Repr.disj s2) := by
+    intro s1 s2 Hs
+    apply Quotient.sound
+    apply Repr.disj_respectful
+    exact fun n ↦ Hs n
+  apply Quotient.lift f H qss
+
 
 end Sierpinksian
 
