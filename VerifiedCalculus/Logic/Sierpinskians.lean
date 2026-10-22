@@ -9,6 +9,8 @@ import VerifiedCalculus.Logic.Omniscience
 
 namespace Sierpinksian
 
+private abbrev StdRepr := Repr
+private abbrev StdRepr.addAppParen := Repr.addAppParen
 
 inductive Basic : Type where | true | indeterminate
 
@@ -566,6 +568,16 @@ private unsafe def Quot.unquot {α : Type} {r : α → α → Prop} : Quot r →
 
 unsafe def disj (ss : Nat → Sierpinskian) : Sierpinskian :=
   quot (Repr.disj (fun n ↦ Quot.unquot (ss n)))
+
+
+instance : StdRepr Basic where
+  reprPrec (s : Basic) _p := match s with | .true => "true" | .indeterminate => "indeterminate"
+
+instance : StdRepr Repr where reprPrec (s : Repr) _p :=
+  let N := 7; "(Sierpinskian /- " ++ Std.Format.joinSep ((List.range N).map <| repr ∘ s.val) ", " ++ ", ... -/)"
+
+unsafe instance : StdRepr Sierpinskian where
+  reprPrec s p := let sr : Repr := Quot.unquot s; reprPrec sr p
 
 end Sierpinksian
 

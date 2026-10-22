@@ -32,6 +32,10 @@ macro_rules
       `(tactic| intros a₁ a₂ a₃ a₄; cases a₁ <;> cases a₂ <;> cases a₃ <;> cases a₄; all_goals simp_all)
 
 
+private abbrev StdRepr := Repr
+private abbrev StdRepr.addAppParen := Repr.addAppParen
+
+
 
 inductive Basic : Type where | true | indeterminate | false
 
@@ -451,6 +455,20 @@ theorem cases : LPO -> forall (qk : Kleenean),
         exact Hf
 
 
+private unsafe def Quot.unquot {α : Type} {r : α → α → Prop} : Quot r → α := cast lcProof
+
+instance : StdRepr Kleenean.Basic where
+  reprPrec (bk : Basic) _p :=
+    match bk with
+    | .true => "true"
+    | .indeterminate => "indeterminate"
+    | .false => "false"
+
+instance : StdRepr Kleenean.Repr where reprPrec (k : Repr) _p :=
+  let N := 7; "(Kleenean /- " ++ Std.Format.joinSep ((List.range N).map <| repr ∘ k.val) ", " ++ ", ... -/)"
+
+unsafe instance : StdRepr Kleenean where
+  reprPrec k p := let kr : Repr := Quot.unquot k; reprPrec kr p
 
 end Kleenean
 
